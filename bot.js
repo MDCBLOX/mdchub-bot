@@ -30,7 +30,7 @@ function resetWarnings(userId) {
   saveWarnings();
 }
 
-// Bad words list
+// Bad words +18 list
 const badWords = [
   "amk", "aq", "sik", "siktir", "oruspu", "orospu", "piç", "pezevenk", "göt", "got", "amına",
   "fuck", "shit", "bitch", "asshole", "dick", "pussy", "cunt", "whore", "bastard",
@@ -119,7 +119,7 @@ client.on(Events.MessageCreate, async message => {
   for (let word of badWords) {
     if (content.includes(word)) {
       triggered = true;
-      reason = 'Küfür / +18 içerik';
+      reason = 'Swearing / +18 content';
       break;
     }
   }
@@ -129,7 +129,7 @@ client.on(Events.MessageCreate, async message => {
       const filename = attachment.name.toLowerCase();
       if (blockedFiles.some(ext => filename.endsWith(ext))) {
         triggered = true;
-        reason = 'Yasaklı dosya türü';
+        reason = 'Blocked file type';
       }
     });
   }
@@ -142,30 +142,30 @@ client.on(Events.MessageCreate, async message => {
       
       const embed = new EmbedBuilder()
         .setColor('#FF0000')
-        .setTitle('⚠️ Otomatik Uyarı')
-        .setDescription(`${message.author} bir kuralı ihlal etti.`)
+        .setTitle('⚠️ Auto Warning')
+        .setDescription(`${message.author} violated a rule.`)
         .addFields(
-          { name: 'Sebep', value: reason },
-          { name: 'Uyarı Sayısı', value: `${warnCount}/2` }
+          { name: 'Reason', value: reason },
+          { name: 'Warning Count', value: `${warnCount}/2` }
         )
         .setTimestamp();
 
       await sendLog(message.guild, embed);
 
       if (warnCount >= 2) {
-        await message.member.ban({ reason: `Otomatik ban: ${reason}` }).catch(() => {});
+        await message.member.ban({ reason: `Auto ban: ${reason}` }).catch(() => {});
         
         const banEmbed = new EmbedBuilder()
           .setColor('#FF0000')
-          .setTitle('🔨 Otomatik Ban')
-          .setDescription(`${message.author.tag} 2. uyarı nedeniyle banlandı.`)
-          .addFields({ name: 'Sebep', value: reason })
+          .setTitle('🔨 Auto Ban')
+          .setDescription(`${message.author.tag} was banned after 2 warnings.`)
+          .addFields({ name: 'Reason', value: reason })
           .setTimestamp();
         
         await sendLog(message.guild, banEmbed);
         resetWarnings(message.author.id);
       } else {
-        await message.channel.send(`${message.author}, uyarı aldın! (${warnCount}/2) Sebep: ${reason}`).catch(() => {});
+        await message.channel.send(`${message.author}, you received a warning! (${warnCount}/2) Reason: ${reason}`).catch(() => {});
       }
     } catch (error) {
       console.error('Auto moderation error:', error);
@@ -183,7 +183,7 @@ client.on(Events.InteractionCreate, async interaction => {
   if (['warn', 'unwarn', 'ban'].includes(commandName)) {
     if (!hasPermission(member)) {
       return interaction.reply({ 
-        content: 'Bu komutu kullanma yetkin yok. Sadece Owner ve Moderator rolleri kullanabilir.', 
+        content: 'You do not have permission to use this command. Only Owner and Moderator roles can use it.', 
         ephemeral: true 
       });
     }
@@ -194,7 +194,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (!code.startsWith('MDC-')) {
       return interaction.reply({ 
-        content: 'Geçersiz kod. Kod MDC- ile başlamalı.', 
+        content: 'Invalid code. The code must start with MDC-.', 
         ephemeral: true 
       });
     }
@@ -204,7 +204,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
       if (!role) {
         return interaction.reply({ 
-          content: 'Rol "MDC verified" bulunamadı. Lütfen rolü oluştur.', 
+          content: 'Role "MDC verified" was not found. Please create it first.', 
           ephemeral: true 
         });
       }
@@ -213,17 +213,17 @@ client.on(Events.InteractionCreate, async interaction => {
 
       const embed = new EmbedBuilder()
         .setColor('#00FF00')
-        .setTitle('✅ Doğrulama Başarılı')
-        .setDescription(`${member.user.tag} başarıyla doğrulandı.`)
-        .addFields({ name: 'Kod', value: code })
+        .setTitle('✅ Verification Successful')
+        .setDescription(`${member.user.tag} has been successfully verified.`)
+        .addFields({ name: 'Code', value: code })
         .setTimestamp();
 
       await sendLog(guild, embed);
-      await interaction.reply({ content: 'Doğrulaman başarılı! MDC verified rolünü aldın.', ephemeral: true });
+      await interaction.reply({ content: 'Verification successful! You have received the MDC verified role.', ephemeral: true });
 
     } catch (error) {
       console.error('Verify error:', error);
-      await interaction.reply({ content: 'Doğrulama sırasında bir hata oluştu.', ephemeral: true });
+      await interaction.reply({ content: 'An error occurred during verification.', ephemeral: true });
     }
   }
 
@@ -233,72 +233,72 @@ client.on(Events.InteractionCreate, async interaction => {
     const targetMember = await guild.members.fetch(user.id).catch(() => null);
 
     if (!targetMember) {
-      return interaction.reply({ content: 'Kullanıcı bulunamadı.', ephemeral: true });
+      return interaction.reply({ content: 'User not found.', ephemeral: true });
     }
 
     const warnCount = addWarning(user.id);
 
     const embed = new EmbedBuilder()
       .setColor('#FFA500')
-      .setTitle('⚠️ Manuel Uyarı')
-      .setDescription(`${user} uyarıldı.`)
+      .setTitle('⚠️ Manual Warning')
+      .setDescription(`${user} has been warned.`)
       .addFields(
-        { name: 'Sebep', value: reason },
-        { name: 'Uyarı Sayısı', value: `${warnCount}/2` },
-        { name: 'Uyaran', value: `${member.user.tag}` }
+        { name: 'Reason', value: reason },
+        { name: 'Warning Count', value: `${warnCount}/2` },
+        { name: 'Warned by', value: `${member.user.tag}` }
       )
       .setTimestamp();
 
     await sendLog(guild, embed);
 
     if (warnCount >= 2) {
-      await targetMember.ban({ reason: `Manuel ban: ${reason}` }).catch(() => {});
+      await targetMember.ban({ reason: `Manual ban: ${reason}` }).catch(() => {});
       const banEmbed = new EmbedBuilder()
         .setColor('#FF0000')
         .setTitle('🔨 Ban')
-        .setDescription(`${user.tag} 2. uyarı nedeniyle banlandı.`)
-        .addFields({ name: 'Sebep', value: reason })
+        .setDescription(`${user.tag} was banned after 2 warnings.`)
+        .addFields({ name: 'Reason', value: reason })
         .setTimestamp();
       await sendLog(guild, banEmbed);
       resetWarnings(user.id);
     }
 
-    await interaction.reply({ content: `${user} uyarıldı. (${warnCount}/2)`, ephemeral: true });
+    await interaction.reply({ content: `${user} has been warned. (${warnCount}/2)`, ephemeral: true });
   }
 
   if (commandName === 'warnings') {
     const user = options.getUser('user');
     const count = getWarningCount(user.id);
-    await interaction.reply({ content: `${user} kullanıcısının ${count} uyarısı var.`, ephemeral: true });
+    await interaction.reply({ content: `${user} has ${count} warning(s).`, ephemeral: true });
   }
 
   if (commandName === 'unwarn') {
     const user = options.getUser('user');
     resetWarnings(user.id);
-    await interaction.reply({ content: `${user} kullanıcısının uyarıları temizlendi.`, ephemeral: true });
+    await interaction.reply({ content: `All warnings for ${user} have been cleared.`, ephemeral: true });
   }
 
   if (commandName === 'ban') {
     const user = options.getUser('user');
-    const reason = options.getString('reason') || 'Sebep belirtilmedi';
+    const reason = options.getString('reason') || 'No reason provided';
     const targetMember = await guild.members.fetch(user.id).catch(() => null);
 
-    if (!targetMember) return interaction.reply({ content: 'Kullanıcı bulunamadı.', ephemeral: true });
+    if (!targetMember) return interaction.reply({ content: 'User not found.', ephemeral: true });
 
     await targetMember.ban({ reason });
     
     const embed = new EmbedBuilder()
       .setColor('#FF0000')
-      .setTitle('🔨 Manuel Ban')
-      .setDescription(`${user.tag} banlandı.`)
+      .setTitle('🔨 Manual Ban')
+      .setDescription(`${user.tag} has been banned.`)
       .addFields(
-        { name: 'Sebep', value: reason },
-        { name: 'Banlayan', value: `${member.user.tag}` }
+        { name: 'Reason', value: reason },
+        { name: 'Banned by', value: `${member.user.tag}` }
       )
       .setTimestamp();
 
     await sendLog(guild, embed);
-    await interaction.reply({ content: `${user.tag} banlandı.`, ephemeral: true });
+    await interaction.reply({ content: `${user.tag} has been banned.`, ephemeral: true });
   }
 });
 
