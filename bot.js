@@ -1,11 +1,11 @@
-const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = '1514642368085754058';
 const LOG_CHANNEL_NAME = '《🚫》console';
 
-// Warning system (simple JSON storage)
+// Warning system
 let warnings = {};
 if (fs.existsSync('./warnings.json')) {
   warnings = JSON.parse(fs.readFileSync('./warnings.json', 'utf8'));
@@ -30,14 +30,13 @@ function resetWarnings(userId) {
   saveWarnings();
 }
 
-// Bad words list (küfür +18)
+// Bad words list
 const badWords = [
   "amk", "aq", "sik", "siktir", "oruspu", "orospu", "piç", "pezevenk", "göt", "got", "amına",
   "fuck", "shit", "bitch", "asshole", "dick", "pussy", "cunt", "whore", "bastard",
   "porn", "porno", "sex", "sikiş", "sikis", "amcık", "amcik", "yarrak", "yarra", "31", "mastürbasyon"
 ];
 
-// File extensions to block
 const blockedFiles = ['.exe', '.zip', '.rar', '.7z', '.js', '.bat', '.cmd', '.scr'];
 
 if (!TOKEN) {
@@ -54,12 +53,18 @@ const client = new Client({
   ]
 });
 
-// Log function
 async function sendLog(guild, embed) {
   const logChannel = guild.channels.cache.find(ch => ch.name === LOG_CHANNEL_NAME);
   if (logChannel) {
     await logChannel.send({ embeds: [embed] }).catch(() => {});
   }
+}
+
+function hasPermission(member) {
+  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  return member.roles.cache.some(role => 
+    role.name === 'Owner' || role.name === 'Moderator'
+  );
 }
 
 client.once(Events.ClientReady, async () => {
@@ -69,7 +74,7 @@ client.once(Events.ClientReady, async () => {
   const commands = [
     new SlashCommandBuilder()
       .setName('warn')
-      .setDescription('Warn a user')
+      .setDescription('Warn a user (Owner/Moderator only)')
       .addUserOption(option => option.setName('user').setDescription('User to warn').setRequired(true))
       .addStringOption(option => option.setName('reason').setDescription('Reason for warning').setRequired(true)),
     
@@ -80,12 +85,12 @@ client.once(Events.ClientReady, async () => {
     
     new SlashCommandBuilder()
       .setName('unwarn')
-      .setDescription('Remove all warnings from a user')
+      .setDescription('Remove all warnings from a user (Owner/Moderator only)')
       .addUserOption(option => option.setName('user').setDescription('User to unwarn').setRequired(true)),
     
     new SlashCommandBuilder()
       .setName('ban')
-      .setDescription('Ban a user')
+      .setDescription('Ban a user (Owner/Moderator only)')
       .addUserOption(option => option.setName('user').setDescription('User to ban').setRequired(true))
       .addStringOption(option => option.setName('reason').setDescription('Reason for ban').setRequired(false))
   ];
@@ -106,7 +111,6 @@ client.on(Events.MessageCreate, async message => {
   let triggered = false;
   let reason = '';
 
-  // Check bad words
   for (let word of badWords) {
     if (content.includes(word)) {
       triggered = true;
@@ -115,7 +119,6 @@ client.on(Events.MessageCreate, async message => {
     }
   }
 
-  // Check blocked files
   if (message.attachments.size > 0) {
     message.attachments.forEach(attachment => {
       const filename = attachment.name.toLowerCase();
@@ -125,9 +128,6 @@ client.on(Events.MessageCreate, async message => {
       }
     });
   }
-
-  // Simple spam check (5 messages in 5 seconds)
-  // (Basic version - can be improved later)
 
   if (triggered) {
     try {
@@ -148,7 +148,6 @@ client.on(Events.MessageCreate, async message => {
       await sendLog(message.guild, embed);
 
       if (warnCount >= 2) {
-        // Auto ban
         await message.member.ban({ reason: `Otomatik ban: ${reason}` }).catch(() => {});
         
         const banEmbed = new EmbedBuilder()
@@ -174,6 +173,16 @@ client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
   const { commandName, options, guild, member } = interaction;
+
+  // Permission check for dangerous commands
+  if (['warn', 'unwarn', 'ban'].includes(commandName)) {
+    if (!hasPermission(member)) {
+      return interaction.reply({ 
+        content: 'Bu komutu kullanma yetkin yok. Sadece Owner ve Moderator rolleri kullanabilir.', 
+        ephemeral: true 
+      });
+    }
+  }
 
   if (commandName === 'warn') {
     const user = options.getUser('user');
