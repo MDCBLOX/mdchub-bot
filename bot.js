@@ -4,8 +4,8 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = '1514642368085754058';
 
 if (!TOKEN) {
-  console.error('❌ ERROR: TOKEN environment variable is missing!');
-  console.error('Please add TOKEN in Railway Variables.');
+  console.error('ERROR: TOKEN environment variable is missing!');
+  console.error('Please go to Railway Variables and add TOKEN.');
   process.exit(1);
 }
 
@@ -17,7 +17,7 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, async () => {
-  console.log(`✅ Bot is online as: ${client.user.tag}`);
+  console.log(`Bot is online as: ${client.user.tag}`);
 
   const rest = new REST({ version: '10' }).setToken(TOKEN);
   try {
@@ -25,14 +25,14 @@ client.once(Events.ClientReady, async () => {
       Routes.applicationCommands(CLIENT_ID),
       { body: [new SlashCommandBuilder()
         .setName('verify')
-        .setDescription('Verify your account with the code from the website')
+        .setDescription('Verify your account with the code from the MDCHUB website')
         .addStringOption(option =>
           option.setName('code')
-            .setDescription('The verification code from MDCHUB website')
+            .setDescription('The verification code from the website')
             .setRequired(true)
         )] }
     );
-    console.log('✅ Slash commands registered successfully');
+    console.log('Slash commands registered successfully');
   } catch (error) {
     console.error('Error registering slash commands:', error);
   }
@@ -49,7 +49,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
       if (!role) {
         return interaction.reply({ 
-          content: '❌ Role "MDC verified" not found in this server. Please create the role first.', 
+          content: 'Role "MDC verified" was not found in this server. Please create it first.', 
           ephemeral: true 
         });
       }
@@ -57,14 +57,14 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.member.roles.add(role);
 
       await interaction.reply({ 
-        content: `✅ Verification successful!\nYour code: \`${code}\`\nYou now have the **MDC verified** role.`, 
+        content: `Verification successful!\nYour code: \`${code}\`\nYou have been given the **MDC verified** role.`, 
         ephemeral: true 
       });
 
     } catch (error) {
       console.error('Role assignment error:', error);
       await interaction.reply({ 
-        content: '❌ Failed to give role. Make sure:\n1. Bot role is higher than "MDC verified"\n2. Bot has "Manage Roles" permission', 
+        content: 'Failed to assign the role.\nPlease make sure:\n1. The bot\'s role is higher than "MDC verified" in the role list\n2. The bot has "Manage Roles" permission', 
         ephemeral: true 
       });
     }
@@ -77,6 +77,6 @@ client.on('error', error => {
 
 client.login(TOKEN)
   .catch(err => {
-    console.error('❌ Failed to login with token:', err.message);
+    console.error('Failed to login with the provided token:', err.message);
     process.exit(1);
   });
