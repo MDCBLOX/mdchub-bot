@@ -73,6 +73,11 @@ client.once(Events.ClientReady, async () => {
   const rest = new REST({ version: '10' }).setToken(TOKEN);
   const commands = [
     new SlashCommandBuilder()
+      .setName('verify')
+      .setDescription('Verify with your code from the website')
+      .addStringOption(option => option.setName('code').setDescription('Your verification code (must start with MDC-)').setRequired(true)),
+    
+    new SlashCommandBuilder()
       .setName('warn')
       .setDescription('Warn a user (Owner/Moderator only)')
       .addUserOption(option => option.setName('user').setDescription('User to warn').setRequired(true))
@@ -181,6 +186,44 @@ client.on(Events.InteractionCreate, async interaction => {
         content: 'Bu komutu kullanma yetkin yok. Sadece Owner ve Moderator rolleri kullanabilir.', 
         ephemeral: true 
       });
+    }
+  }
+
+  if (commandName === 'verify') {
+    const code = options.getString('code');
+
+    if (!code.startsWith('MDC-')) {
+      return interaction.reply({ 
+        content: 'Geçersiz kod. Kod MDC- ile başlamalı.', 
+        ephemeral: true 
+      });
+    }
+
+    try {
+      const role = guild.roles.cache.find(r => r.name === 'MDC verified');
+
+      if (!role) {
+        return interaction.reply({ 
+          content: 'Rol "MDC verified" bulunamadı. Lütfen rolü oluştur.', 
+          ephemeral: true 
+        });
+      }
+
+      await member.roles.add(role);
+
+      const embed = new EmbedBuilder()
+        .setColor('#00FF00')
+        .setTitle('✅ Doğrulama Başarılı')
+        .setDescription(`${member.user.tag} başarıyla doğrulandı.`)
+        .addFields({ name: 'Kod', value: code })
+        .setTimestamp();
+
+      await sendLog(guild, embed);
+      await interaction.reply({ content: 'Doğrulaman başarılı! MDC verified rolünü aldın.', ephemeral: true });
+
+    } catch (error) {
+      console.error('Verify error:', error);
+      await interaction.reply({ content: 'Doğrulama sırasında bir hata oluştu.', ephemeral: true });
     }
   }
 
