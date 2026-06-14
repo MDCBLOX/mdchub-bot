@@ -1,305 +1,211 @@
-const { Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, Events, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
+const path = require('path');
 
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = '1514642368085754058';
-const LOG_CHANNEL_NAME = '《🚫》console';
+// Level system data file
+const DATA_FILE = path.join(__dirname, 'levels.json');
 
-// Warning system
-let warnings = {};
-if (fs.existsSync('./warnings.json')) {
-  warnings = JSON.parse(fs.readFileSync('./warnings.json', 'utf8'));
+// Load or create levels data
+let levels = {};
+if (fs.existsSync(DATA_FILE)) {
+    levels = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
 }
 
-function saveWarnings() {
-  fs.writeFileSync('./warnings.json', JSON.stringify(warnings, null, 2));
+function saveLevels() {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(levels, null, 2));
 }
 
-function getWarningCount(userId) {
-  return warnings[userId] || 0;
+// Calculate level from XP
+function getLevel(xp) {
+    return Math.floor(0.1 * Math.sqrt(xp));
 }
 
-function addWarning(userId) {
-  warnings[userId] = (warnings[userId] || 0) + 1;
-  saveWarnings();
-  return warnings[userId];
-}
-
-function resetWarnings(userId) {
-  delete warnings[userId];
-  saveWarnings();
-}
-
-// Bad words +18 list
-const badWords = [
-  "amk", "aq", "sik", "siktir", "oruspu", "orospu", "piç", "pezevenk", "göt", "got", "amına",
-  "fuck", "shit", "bitch", "asshole", "dick", "pussy", "cunt", "whore", "bastard",
-  "porn", "porno", "sex", "sikiş", "sikis", "amcık", "amcik", "yarrak", "yarra", "31", "mastürbasyon"
-];
-
-const blockedFiles = ['.exe', '.zip', '.rar', '.7z', '.js', '.bat', '.cmd', '.scr'];
-
-if (!TOKEN) {
-  console.error('ERROR: TOKEN environment variable is missing!');
-  process.exit(1);
+// Calculate XP needed for next level
+function getXpForNextLevel(level) {
+    return Math.ceil(Math.pow((level + 1) / 0.1, 2));
 }
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
+    ]
 });
 
-async function sendLog(guild, embed) {
-  const logChannel = guild.channels.cache.find(ch => ch.name === LOG_CHANNEL_NAME);
-  if (logChannel) {
-    await logChannel.send({ embeds: [embed] }).catch(() => {});
-  }
+const TOKEN = process.env.TOKEN;
+
+if (!TOKEN) {
+    console.error('ERROR: TOKEN is missing! Set it in Railway Variables.');
+    process.exit(1);
 }
 
-function hasPermission(member) {
-  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
-  return member.roles.cache.some(role => 
-    role.name === 'Owner' || role.name === 'Moderator'
-  );
-}
-
-client.once(Events.ClientReady, async () => {
-  console.log(`Bot is online as: ${client.user.tag}`);
-
-  const rest = new REST({ version: '10' }).setToken(TOKEN);
-  const commands = [
-    new SlashCommandBuilder()
-      .setName('verify')
-      .setDescription('Verify with your code from the website')
-      .addStringOption(option => option.setName('code').setDescription('Your verification code (must start with MDC-)').setRequired(true)),
-    
-    new SlashCommandBuilder()
-      .setName('warn')
-      .setDescription('Warn a user (Owner/Moderator only)')
-      .addUserOption(option => option.setName('user').setDescription('User to warn').setRequired(true))
-      .addStringOption(option => option.setName('reason').setDescription('Reason for warning').setRequired(true)),
-    
-    new SlashCommandBuilder()
-      .setName('warnings')
-      .setDescription('Check warnings of a user')
-      .addUserOption(option => option.setName('user').setDescription('User to check').setRequired(true)),
-    
-    new SlashCommandBuilder()
-      .setName('unwarn')
-      .setDescription('Remove all warnings from a user (Owner/Moderator only)')
-      .addUserOption(option => option.setName('user').setDescription('User to unwarn').setRequired(true)),
-    
-    new SlashCommandBuilder()
-      .setName('ban')
-      .setDescription('Ban a user (Owner/Moderator only)')
-      .addUserOption(option => option.setName('user').setDescription('User to ban').setRequired(true))
-      .addStringOption(option => option.setName('reason').setDescription('Reason for ban').setRequired(false))
-  ];
-
-  try {
-    await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-    console.log('Slash commands registered');
-  } catch (error) {
-    console.error('Error registering commands:', error);
-  }
+client.once(Events.ClientReady, () => {
+    console.log(`Bot is online! Logged in as ${client.user.tag}`);
 });
 
-// Auto Moderation
-client.on(Events.MessageCreate, async message => {
-  if (message.author.bot || !message.guild) return;
+// Level system - XP on message
+client.on(Events.MessageCreate, async (message) => {
+    if (message.author.bot) return;
 
-  const content = message.content.toLowerCase();
-  let triggered = false;
-  let reason = '';
+    const userId = message.author.id;
 
-  for (let word of badWords) {
-    if (content.includes(word)) {
-      triggered = true;
-      reason = 'Swearing / +18 content';
-      break;
+    // Initialize user data if not exists
+    if (!levels[userId]) {
+        levels[userId] = {
+            xp: 0,
+            level: 0,
+            username: message.author.username
+        };
     }
-  }
 
-  if (message.attachments.size > 0) {
-    message.attachments.forEach(attachment => {
-      const filename = attachment.name.toLowerCase();
-      if (blockedFiles.some(ext => filename.endsWith(ext))) {
-        triggered = true;
-        reason = 'Blocked file type';
-      }
-    });
-  }
+    // Give random XP (10-20)
+    const xpGained = Math.floor(Math.random() * 11) + 10;
+    levels[userId].xp += xpGained;
+    levels[userId].username = message.author.username;
 
-  if (triggered) {
-    try {
-      await message.delete().catch(() => {});
-      
-      const warnCount = addWarning(message.author.id);
-      
-      const embed = new EmbedBuilder()
-        .setColor('#FF0000')
-        .setTitle('⚠️ Auto Warning')
-        .setDescription(`${message.author} violated a rule.`)
-        .addFields(
-          { name: 'Reason', value: reason },
-          { name: 'Warning Count', value: `${warnCount}/2` }
-        )
-        .setTimestamp();
+    const oldLevel = levels[userId].level;
+    const newLevel = getLevel(levels[userId].xp);
 
-      await sendLog(message.guild, embed);
+    // Level up check
+    if (newLevel > oldLevel) {
+        levels[userId].level = newLevel;
 
-      if (warnCount >= 2) {
-        await message.member.ban({ reason: `Auto ban: ${reason}` }).catch(() => {});
-        
-        const banEmbed = new EmbedBuilder()
-          .setColor('#FF0000')
-          .setTitle('🔨 Auto Ban')
-          .setDescription(`${message.author.tag} was banned after 2 warnings.`)
-          .addFields({ name: 'Reason', value: reason })
-          .setTimestamp();
-        
-        await sendLog(message.guild, banEmbed);
-        resetWarnings(message.author.id);
-      } else {
-        await message.channel.send(`${message.author}, you received a warning! (${warnCount}/2) Reason: ${reason}`).catch(() => {});
-      }
-    } catch (error) {
-      console.error('Auto moderation error:', error);
+        const embed = new EmbedBuilder()
+            .setColor('#5865F2')
+            .setTitle('Level Up!')
+            .setDescription(`Congratulations <@${userId}>! You reached **Level ${newLevel}**!`)
+            .addFields(
+                { name: 'Total XP', value: `${levels[userId].xp}`, inline: true },
+                { name: 'Next Level', value: `${getXpForNextLevel(newLevel)} XP`, inline: true }
+            )
+            .setTimestamp();
+
+        message.channel.send({ embeds: [embed] }).catch(() => {});
     }
-  }
+
+    saveLevels();
 });
 
-// Slash Commands
+// Slash commands
 client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand()) return;
+    if (!interaction.isChatInputCommand()) return;
 
-  const { commandName, options, guild, member } = interaction;
+    const { commandName } = interaction;
 
-  // Permission check for dangerous commands
-  if (['warn', 'unwarn', 'ban'].includes(commandName)) {
-    if (!hasPermission(member)) {
-      return interaction.reply({ 
-        content: 'You do not have permission to use this command. Only Owner and Moderator roles can use it.', 
-        ephemeral: true 
-      });
+    if (commandName === 'verify') {
+        const code = interaction.options.getString('code');
+
+        if (!code || !code.startsWith('MDC-')) {
+            return interaction.reply({ 
+                content: 'Invalid code. Codes must start with MDC-', 
+                ephemeral: true 
+            });
+        }
+
+        try {
+            const member = interaction.member;
+            const role = interaction.guild.roles.cache.find(r => r.name === 'MDC verified');
+
+            if (!role) {
+                return interaction.reply({ 
+                    content: 'Verified role not found. Please contact an administrator.', 
+                    ephemeral: true 
+                });
+            }
+
+            if (member.roles.cache.has(role.id)) {
+                return interaction.reply({ 
+                    content: 'You are already verified!', 
+                    ephemeral: true 
+                });
+            }
+
+            await member.roles.add(role);
+
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('Verification Successful')
+                .setDescription(`Welcome! You have been verified and given the **MDC verified** role.`)
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed], ephemeral: true });
+
+            // Log to console channel
+            const logChannel = interaction.guild.channels.cache.find(ch => ch.name.includes('console'));
+            if (logChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setColor('#5865F2')
+                    .setTitle('New Verification')
+                    .setDescription(`<@${member.id}> verified with code: `${code}``)
+                    .setTimestamp();
+                logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+            }
+
+        } catch (error) {
+            console.error('Verify error:', error);
+            await interaction.reply({ 
+                content: 'An error occurred during verification.', 
+                ephemeral: true 
+            });
+        }
     }
-  }
 
-  if (commandName === 'verify') {
-    const code = options.getString('code');
+    // Level command
+    if (commandName === 'level') {
+        const user = interaction.options.getUser('user') || interaction.user;
+        const userId = user.id;
 
-    if (!code.startsWith('MDC-')) {
-      return interaction.reply({ 
-        content: 'Invalid code. The code must start with MDC-.', 
-        ephemeral: true 
-      });
+        if (!levels[userId]) {
+            return interaction.reply({ 
+                content: `${user.username} has no XP yet.`, 
+                ephemeral: true 
+            });
+        }
+
+        const userLevel = levels[userId].level;
+        const userXp = levels[userId].xp;
+        const nextLevelXp = getXpForNextLevel(userLevel);
+
+        const embed = new EmbedBuilder()
+            .setColor('#5865F2')
+            .setTitle(`${user.username}'s Level`)
+            .addFields(
+                { name: 'Level', value: `${userLevel}`, inline: true },
+                { name: 'XP', value: `${userXp}`, inline: true },
+                { name: 'Next Level', value: `${nextLevelXp} XP`, inline: true }
+            )
+            .setTimestamp();
+
+        await interaction.reply({ embeds: [embed] });
     }
 
-    try {
-      const role = guild.roles.cache.find(r => r.name === 'MDC verified');
+    // Leaderboard command
+    if (commandName === 'leaderboard') {
+        const sortedUsers = Object.entries(levels)
+            .sort((a, b) => b[1].xp - a[1].xp)
+            .slice(0, 10);
 
-      if (!role) {
-        return interaction.reply({ 
-          content: 'Role "MDC verified" was not found. Please create it first.', 
-          ephemeral: true 
+        if (sortedUsers.length === 0) {
+            return interaction.reply({ content: 'No users have XP yet.', ephemeral: true });
+        }
+
+        let description = '';
+        sortedUsers.forEach((entry, index) => {
+            const [userId, data] = entry;
+            description += `**${index + 1}.** <@${userId}> - Level ${data.level} (${data.xp} XP)
+`;
         });
-      }
 
-      await member.roles.add(role);
+        const embed = new EmbedBuilder()
+            .setColor('#FFD700')
+            .setTitle('Leaderboard - Top 10')
+            .setDescription(description)
+            .setTimestamp();
 
-      const embed = new EmbedBuilder()
-        .setColor('#00FF00')
-        .setTitle('✅ Verification Successful')
-        .setDescription(`${member.user.tag} has been successfully verified.`)
-        .addFields({ name: 'Code', value: code })
-        .setTimestamp();
-
-      await sendLog(guild, embed);
-      await interaction.reply({ content: 'Verification successful! You have received the MDC verified role.', ephemeral: true });
-
-    } catch (error) {
-      console.error('Verify error:', error);
-      await interaction.reply({ content: 'An error occurred during verification.', ephemeral: true });
+        await interaction.reply({ embeds: [embed] });
     }
-  }
-
-  if (commandName === 'warn') {
-    const user = options.getUser('user');
-    const reason = options.getString('reason');
-    const targetMember = await guild.members.fetch(user.id).catch(() => null);
-
-    if (!targetMember) {
-      return interaction.reply({ content: 'User not found.', ephemeral: true });
-    }
-
-    const warnCount = addWarning(user.id);
-
-    const embed = new EmbedBuilder()
-      .setColor('#FFA500')
-      .setTitle('⚠️ Manual Warning')
-      .setDescription(`${user} has been warned.`)
-      .addFields(
-        { name: 'Reason', value: reason },
-        { name: 'Warning Count', value: `${warnCount}/2` },
-        { name: 'Warned by', value: `${member.user.tag}` }
-      )
-      .setTimestamp();
-
-    await sendLog(guild, embed);
-
-    if (warnCount >= 2) {
-      await targetMember.ban({ reason: `Manual ban: ${reason}` }).catch(() => {});
-      const banEmbed = new EmbedBuilder()
-        .setColor('#FF0000')
-        .setTitle('🔨 Ban')
-        .setDescription(`${user.tag} was banned after 2 warnings.`)
-        .addFields({ name: 'Reason', value: reason })
-        .setTimestamp();
-      await sendLog(guild, banEmbed);
-      resetWarnings(user.id);
-    }
-
-    await interaction.reply({ content: `${user} has been warned. (${warnCount}/2)`, ephemeral: true });
-  }
-
-  if (commandName === 'warnings') {
-    const user = options.getUser('user');
-    const count = getWarningCount(user.id);
-    await interaction.reply({ content: `${user} has ${count} warning(s).`, ephemeral: true });
-  }
-
-  if (commandName === 'unwarn') {
-    const user = options.getUser('user');
-    resetWarnings(user.id);
-    await interaction.reply({ content: `All warnings for ${user} have been cleared.`, ephemeral: true });
-  }
-
-  if (commandName === 'ban') {
-    const user = options.getUser('user');
-    const reason = options.getString('reason') || 'No reason provided';
-    const targetMember = await guild.members.fetch(user.id).catch(() => null);
-
-    if (!targetMember) return interaction.reply({ content: 'User not found.', ephemeral: true });
-
-    await targetMember.ban({ reason });
-    
-    const embed = new EmbedBuilder()
-      .setColor('#FF0000')
-      .setTitle('🔨 Manual Ban')
-      .setDescription(`${user.tag} has been banned.`)
-      .addFields(
-        { name: 'Reason', value: reason },
-        { name: 'Banned by', value: `${member.user.tag}` }
-      )
-      .setTimestamp();
-
-    await sendLog(guild, embed);
-    await interaction.reply({ content: `${user.tag} has been banned.`, ephemeral: true });
-  }
 });
 
 client.login(TOKEN);
