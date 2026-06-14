@@ -75,7 +75,7 @@ client.on(Events.MessageCreate, async (message) => {
         const embed = new EmbedBuilder()
             .setColor('#5865F2')
             .setTitle('Level Up!')
-            .setDescription(`Congratulations <@${userId}>! You reached **Level ${newLevel}**!`)
+            .setDescription(`Congratulations <@${userId}>! You reached Level ${newLevel}!`)
             .addFields(
                 { name: 'Total XP', value: `${levels[userId].xp}`, inline: true },
                 { name: 'Next Level', value: `${getXpForNextLevel(newLevel)} XP`, inline: true }
@@ -127,7 +127,7 @@ client.on(Events.InteractionCreate, async interaction => {
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
                 .setTitle('Verification Successful')
-                .setDescription(`Welcome! You have been verified and given the **MDC verified** role.`)
+                .setDescription(`Welcome! You have been verified and given the MDC verified role.`)
                 .setTimestamp();
 
             await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -138,7 +138,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 const logEmbed = new EmbedBuilder()
                     .setColor('#5865F2')
                     .setTitle('New Verification')
-                    .setDescription(`<@${member.id}> verified with code: `${code}``)
+                    .setDescription(`<@${member.id}> verified with code: ${code}`)
                     .setTimestamp();
                 logChannel.send({ embeds: [logEmbed] }).catch(() => {});
             }
@@ -159,7 +159,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
         if (!levels[userId]) {
             return interaction.reply({ 
-                content: `${user.username} has no XP yet.`, 
+                content: user.username + ' has no XP yet.', 
                 ephemeral: true 
             });
         }
@@ -170,11 +170,11 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const embed = new EmbedBuilder()
             .setColor('#5865F2')
-            .setTitle(`${user.username}'s Level`)
+            .setTitle(user.username + "'s Level")
             .addFields(
-                { name: 'Level', value: `${userLevel}`, inline: true },
-                { name: 'XP', value: `${userXp}`, inline: true },
-                { name: 'Next Level', value: `${nextLevelXp} XP`, inline: true }
+                { name: 'Level', value: userLevel.toString(), inline: true },
+                { name: 'XP', value: userXp.toString(), inline: true },
+                { name: 'Next Level', value: nextLevelXp + ' XP', inline: true }
             )
             .setTimestamp();
 
@@ -194,8 +194,8 @@ client.on(Events.InteractionCreate, async interaction => {
         let description = '';
         sortedUsers.forEach((entry, index) => {
             const [userId, data] = entry;
-            description += `**${index + 1}.** <@${userId}> - Level ${data.level} (${data.xp} XP)
-`;
+            description += '**' + (index + 1) + '.** <@' + userId + '> - Level ' + data.level + ' (' + data.xp + ' XP)
+';
         });
 
         const embed = new EmbedBuilder()
