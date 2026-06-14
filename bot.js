@@ -2,6 +2,18 @@ const { Client, GatewayIntentBits, Events, EmbedBuilder } = require('discord.js'
 const fs = require('fs');
 const path = require('path');
 
+// Used codes storage
+const USED_CODES_FILE = path.join(__dirname, 'used_codes.json');
+let usedCodes = [];
+
+if (fs.existsSync(USED_CODES_FILE)) {
+    usedCodes = JSON.parse(fs.readFileSync(USED_CODES_FILE, 'utf8'));
+}
+
+function saveUsedCodes() {
+    fs.writeFileSync(USED_CODES_FILE, JSON.stringify(usedCodes, null, 2));
+}
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -31,9 +43,18 @@ client.on(Events.InteractionCreate, async interaction => {
     if (commandName === 'verify') {
         const code = interaction.options.getString('code');
 
-        if (!code || !code.startsWith('MDC-')) {
+        // Validation: Code must start with MDC- and be at least 8 characters
+        if (!code || !code.startsWith('MDC-') || code.length < 8) {
             return interaction.reply({ 
-                content: 'Invalid code. Codes must start with MDC-', 
+                content: 'Invalid code. Codes must start with MDC- and be at least 8 characters long.', 
+                ephemeral: true 
+            });
+        }
+
+        // Check if code was already used
+        if (usedCodes.includes(code)) {
+            return interaction.reply({ 
+                content: 'This code has already been used.', 
                 ephemeral: true 
             });
         }
@@ -57,6 +78,10 @@ client.on(Events.InteractionCreate, async interaction => {
             }
 
             await member.roles.add(role);
+
+            // Mark code as used
+            usedCodes.push(code);
+            saveUsedCodes();
 
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
